@@ -127,10 +127,16 @@ function parseProduct(html, url) {
   };
 }
 
-async function get(url) {
-  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 CatalogImporter/1.0' } });
-  if (!r.ok) throw new Error(`${r.status} em ${url}`);
-  return r.text();
+async function get(url, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 CatalogImporter/1.0' }, signal: controller.signal });
+    if (!r.ok) throw new Error(`${r.status} em ${url}`);
+    return r.text();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function upsert(row) {
