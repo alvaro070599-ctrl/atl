@@ -81,8 +81,8 @@ function cleanCategory(value = '') {
 function extractCategory(html) {
   // 1) A fonte mais confiável: link da própria categoria.
   const categoryLink =
-    first(/(?:categoria|category)[^<]{0,300}<a[^>]+href=["'][^"']*\/produtos\/(?:categoria|departamento)[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>/i, html) ||
-    first(/<a[^>]+href=["'][^"']*\/produtos\/(?:categoria|departamento)[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>/i, html);
+    first(/(?:categoria|category)[^<]{0,300}<a[^>]+href=["'][^"']*\/produtos\/(?:categoria|departamento)[^"']*["'][^>]*>([\s\S]*?)<\/a>/i, html) ||
+    first(/<a[^>]+href=["'][^"']*\/produtos\/(?:categoria|departamento)[^"']*["'][^>]*>([\s\S]*?)<\/a>/i, html);
 
   const fromLink = cleanCategory(categoryLink);
   if (fromLink) return fromLink;
@@ -92,7 +92,7 @@ function extractCategory(html) {
   if (ldCategory) return ldCategory;
 
   // 3) Texto "Categoria:" somente quando o trecho seguinte for claramente curto.
-  const labeled = first(/Categoria\\s*:\\s*(?:<[^>]*>\\s*)?([^<\\n]{1,80})/i, html);
+  const labeled = first(/Categoria\s*:\\s*(?:<[^>]*>\\s*)?([^<\\n]{1,80})/i, html);
   return cleanCategory(labeled);
 }
 
@@ -194,7 +194,7 @@ function parseProduct(html, url) {
   const ld = jsonLdProducts(html)[0] || {};
   const offers = Array.isArray(ld.offers) ? ld.offers[0] : (ld.offers || {});
 
-  const h1 = first(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i, html);
+  const h1 = first(/<h1[^>]*>([\s\S]*?)<\/h1>/i, html);
   const ogTitle = first(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i, html);
   const nome = betterName(h1, ld.name, ogTitle, url);
 
@@ -213,7 +213,7 @@ function parseProduct(html, url) {
   const descricao =
     typeof ld.description === 'string' ? ld.description :
     first(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i, html) ||
-    first(/<div[^>]+class=["'][^"']*(?:descricao|description)[^"']*["'][^>]*>([\\s\\S]*?)<\\/div>/i, html);
+    first(/<div[^>]+class=["'][^"']*(?:descricao|description)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i, html);
 
   const preco =
     numberFrom(offers.price) ??
