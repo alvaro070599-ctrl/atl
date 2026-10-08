@@ -24,7 +24,7 @@ function stripHtml(s = '') {
 
 function isProductUrl(u) {
   try {
-    const path = new URL(u).pathname.replace(/\\/+$/, '');
+    const path = new URL(u).pathname.replace(/\/+$/, '');
     if (!/^\/produtos\//i.test(path)) return false;
 
     // These are navigation/category/search pages, not individual products.
