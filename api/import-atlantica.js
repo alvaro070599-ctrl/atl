@@ -153,7 +153,9 @@ async function upsert(row) {
       Prefer: 'resolution=merge-duplicates,return=minimal',
     },
     body: JSON.stringify({ ...row, atualizado_em: new Date().toISOString() }),
+    signal: controller.signal,
   });
+  clearTimeout(timer);
   if (!r.ok) throw new Error(await r.text());
 }
 
@@ -172,20 +174,32 @@ export default async function handler(req, res) {
     for (let page = 1; page <= pages; page++) {
       const base = LIST.replace('PAGE', String(page));
       const html = await get(base);
-      for (const u of links(html, base)) found.add(u);
-      if (!html || !/\/produtos\//i.test(html)) break;
+      const pageLinks = links(html, base);
+      const before = found.size;
+      for (const u of pageLinks) found.add(u);
+      if (!pageLinks.length || found.size === before) break;
     }
 
     let importados = 0, falhas = 0;
-    for (const url of found) {
-      try {
-        const product = parseProduct(await get(url), url);
-        if (product) {
-          await upsert(product);
-          importados++;
+    const urls = [...found];
+    const concurrency = 8;
+    for (let i = 0; i < urls.length; i += concurrency) {
+      const lote = urls.slice(i, i + concurrency);
+      const resultados = await Promise.all(lote.map(async (url) => {
+        try {
+          const product = parseProduct(await get(url), url);
+          if (product) {
+            await upsert(product);
+            return { ok: true, imported: true };
+          }
+          return { ok: true, imported: false };
+        } catch {
+          return { ok: false, imported: false };
         }
-      } catch {
-        falhas++;
+      }));
+      for (const r of resultados) {
+        if (r.imported) importados++;
+        if (!r.ok) falhas++;
       }
     }
 
