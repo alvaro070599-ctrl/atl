@@ -2,7 +2,7 @@ const START = 'https://loja.atlanticanatural.com.br/scott01';
 const LIST = 'https://loja.atlanticanatural.com.br/produtos/buscar?ordenacao=Latest&pagina=PAGE&quantidade=100';
 
 const clean = (s = '') => String(s)
-  .replace(/\\s+/g, ' ')
+  .replace(/\s+/g, ' ')
   .replace(/&nbsp;/gi, ' ')
   .trim();
 
@@ -39,7 +39,7 @@ function first(re, html) {
 
 function jsonLdProducts(html) {
   const out = [];
-  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\\s\\S]*?)<\/script>/gi;
+  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   let m;
 
   while ((m = re.exec(html))) {
@@ -66,10 +66,10 @@ function cleanProductName(value = '') {
 
   // Remove common internal SKU/code blocks when they leak into the title.
   name = name
-    .replace(/^(?:[A-Z]{1,4}[-_ ]?\\d{2,}[A-Z0-9#*_-]*[\\s:.-]*)+/i, '')
-    .replace(/(?:^|\\s)[A-Z]{1,4}[-_ ]?\\d{2,}[A-Z0-9#*_-]*(?=\\s|$)/gi, ' ')
-    .replace(/(?:^|\\s)[A-Z0-9]{1,5}#[A-Z0-9_-]{2,}(?=\\s|$)/gi, ' ')
-    .replace(/\\s{2,}/g, ' ')
+    .replace(/^(?:[A-Z]{1,4}[-_ ]?\d{2,}[A-Z0-9#*_-]*[\s:.-]*)+/i, '')
+    .replace(/(?:^|\s)[A-Z]{1,4}[-_ ]?\d{2,}[A-Z0-9#*_-]*(?=\s|$)/gi, ' ')
+    .replace(/(?:^|\s)[A-Z0-9]{1,5}#[A-Z0-9_-]{2,}(?=\s|$)/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
     .replace(/^[|•·:;,_-]+|[|•·:;,_-]+$/g, '')
     .trim();
 
@@ -78,8 +78,8 @@ function cleanProductName(value = '') {
 
 function numberFrom(value) {
   if (value == null || value === '') return null;
-  let s = String(value).trim().replace(/R\\$\\s?/i, '').replace(/\\s/g, '');
-  if (s.includes(',') && s.includes('.')) s = s.replace(/\\./g, '').replace(',', '.');
+  let s = String(value).trim().replace(/R\$\s?/i, '').replace(/\s/g, '');
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
   else if (s.includes(',')) s = s.replace(',', '.');
   const n = Number(s);
   return Number.isFinite(n) ? Number(n.toFixed(2)) : null;
@@ -91,14 +91,14 @@ function parseProduct(html, url) {
 
   const nome = cleanProductName(
     ld.name ||
-    first(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i, html) ||
+    first(/<h1[^>]*>([\s\S]*?)<\/h1>/i, html) ||
     first(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i, html)
   );
 
   const categoria =
     stripHtml(ld.category || '') ||
-    first(/Categoria\\s*:\\s*<[^>]*>\\s*([^<]+)/i, html) ||
-    first(/Categoria\\s*:\\s*([^<\\n]+)/i, html);
+    first(/Categoria\s*:\s*<[^>]*>\s*([^<]+)/i, html) ||
+    first(/Categoria\s*:\s*([^<\n]+)/i, html);
 
   const imagem =
     (Array.isArray(ld.image) ? ld.image[0] : ld.image) ||
@@ -108,12 +108,12 @@ function parseProduct(html, url) {
   const descricao =
     ld.description ||
     first(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i, html) ||
-    first(/<div[^>]+class=["'][^"']*(?:descricao|description)[^"']*["'][^>]*>([\\s\\S]*?)<\\/div>/i, html);
+    first(/<div[^>]+class=["'][^"']*(?:descricao|description)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i, html);
 
   const preco =
     numberFrom(offers.price) ??
     numberFrom(offers.lowPrice) ??
-    numberFrom(first(/(?:preço|preco|por)\\s*[:\\-]?\\s*R?\\$?\\s*([\\d.,]+)/i, html));
+    numberFrom(first(/(?:preço|preco|por)\s*[:\-]?\s*R?\$?\s*([\d.,]+)/i, html));
 
   if (!nome) return null;
 
