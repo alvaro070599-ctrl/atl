@@ -1,11 +1,26 @@
 const START = 'https://loja.atlanticanatural.com.br/scott01';
 const LIST = 'https://loja.atlanticanatural.com.br/produtos/buscar?ordenacao=Latest&pagina=PAGE&quantidade=100';
 
-const clean = (s = '') => s.replace(/\\s+/g, ' ').replace(/&nbsp;/g, ' ').trim();
-const abs = (u, base) => { try { return new URL(u, base).href; } catch { return ''; } };
-const decode = (s = '') => s
-  .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-  .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+const clean = (s = '') => String(s)
+  .replace(/\\s+/g, ' ')
+  .replace(/&nbsp;/gi, ' ')
+  .trim();
+
+const abs = (u, base) => {
+  try { return new URL(u, base).href; } catch { return ''; }
+};
+
+const decode = (s = '') => String(s)
+  .replace(/&amp;/gi, '&')
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;/gi, "'")
+  .replace(/&#x27;/gi, "'")
+  .replace(/&lt;/gi, '<')
+  .replace(/&gt;/gi, '>');
+
+function stripHtml(s = '') {
+  return clean(decode(String(s).replace(/<[^>]+>/g, ' ')));
+}
 
 function links(html, base) {
   const out = [], re = /href=["']([^"']+)["']/gi;
@@ -19,28 +34,95 @@ function links(html, base) {
 
 function first(re, html) {
   const m = html.match(re);
-  return m ? clean(decode(m[1].replace(/<[^>]+>/g, ''))) : '';
+  return m ? stripHtml(m[1]) : '';
+}
+
+function jsonLdProducts(html) {
+  const out = [];
+  const re = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\\s\\S]*?)<\/script>/gi;
+  let m;
+
+  while ((m = re.exec(html))) {
+    try {
+      const data = JSON.parse(m[1].trim());
+      const items = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        if (!item) continue;
+        if (item['@type'] === 'Product') out.push(item);
+        if (Array.isArray(item['@graph'])) {
+          for (const graphItem of item['@graph']) {
+            if (graphItem?.['@type'] === 'Product') out.push(graphItem);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return out;
+}
+
+function cleanProductName(value = '') {
+  let name = stripHtml(value);
+
+  // Remove common internal SKU/code blocks when they leak into the title.
+  name = name
+    .replace(/^(?:[A-Z]{1,4}[-_ ]?\\d{2,}[A-Z0-9#*_-]*[\\s:.-]*)+/i, '')
+    .replace(/(?:^|\\s)[A-Z]{1,4}[-_ ]?\\d{2,}[A-Z0-9#*_-]*(?=\\s|$)/gi, ' ')
+    .replace(/(?:^|\\s)[A-Z0-9]{1,5}#[A-Z0-9_-]{2,}(?=\\s|$)/gi, ' ')
+    .replace(/\\s{2,}/g, ' ')
+    .replace(/^[|•·:;,_-]+|[|•·:;,_-]+$/g, '')
+    .trim();
+
+  return name;
+}
+
+function numberFrom(value) {
+  if (value == null || value === '') return null;
+  const s = String(value).trim().replace(/R\\$\\s?/i, '').replace(/\\./g, '').replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : null;
 }
 
 function parseProduct(html, url) {
-  const nome =
-    first(/<h1[^>]*>([\s\S]*?)<\/h1>/i, html) ||
-    first(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i, html);
+  const ld = jsonLdProducts(html)[0] || {};
+  const offers = Array.isArray(ld.offers) ? ld.offers[0] : (ld.offers || {});
+
+  const nome = cleanProductName(
+    ld.name ||
+    first(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i, html) ||
+    first(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i, html)
+  );
 
   const categoria =
-    first(/Categoria:\s*<[^>]*>\s*([^<]+)/i, html) ||
-    first(/Categoria:\s*([^<\n]+)/i, html);
+    stripHtml(ld.category || '') ||
+    first(/Categoria\\s*:\\s*<[^>]*>\\s*([^<]+)/i, html) ||
+    first(/Categoria\\s*:\\s*([^<\\n]+)/i, html);
 
   const imagem =
+    (Array.isArray(ld.image) ? ld.image[0] : ld.image) ||
     first(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i, html) ||
     first(/<img[^>]+src=["']([^"']+)["'][^>]*>/i, html);
 
   const descricao =
+    ld.description ||
     first(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i, html) ||
-    first(/<div[^>]+class=["'][^"']*(?:descricao|description)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i, html);
+    first(/<div[^>]+class=["'][^"']*(?:descricao|description)[^"']*["'][^>]*>([\\s\\S]*?)<\\/div>/i, html);
+
+  const preco =
+    numberFrom(offers.price) ??
+    numberFrom(offers.lowPrice) ??
+    numberFrom(first(/(?:preço|preco|por)\\s*[:\\-]?\\s*R?\\$?\\s*([\\d.,]+)/i, html));
 
   if (!nome) return null;
-  return { source_url: url, nome, categoria, descricao, imagem: abs(imagem, url), preco: null };
+
+  return {
+    source_url: url,
+    nome,
+    categoria: clean(categoria),
+    descricao: stripHtml(descricao),
+    imagem: abs(imagem, url),
+    preco,
+  };
 }
 
 async function get(url) {
@@ -54,7 +136,7 @@ async function upsert(row) {
   const key = process.env.ATLANTICA_DB_SERVICE_KEY;
   if (!base || !key) throw new Error('Configure ATLANTICA_DB_URL e ATLANTICA_DB_SERVICE_KEY');
 
-  const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
+  const r = await fetch(base.replace(/\\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
     method: 'POST',
     headers: {
       apikey: key,
@@ -90,13 +172,21 @@ export default async function handler(req, res) {
     for (const url of found) {
       try {
         const product = parseProduct(await get(url), url);
-        if (product) { await upsert(product); importados++; }
-      } catch { falhas++; }
+        if (product) {
+          await upsert(product);
+          importados++;
+        }
+      } catch {
+        falhas++;
+      }
     }
 
     return res.status(200).json({
-      ok: true, encontrados: found.size, importados, falhas,
-      preco: 'não importado'
+      ok: true,
+      encontrados: found.size,
+      importados,
+      falhas,
+      preco: 'importado quando disponível no catálogo',
     });
   } catch (e) {
     return res.status(500).json({ erro: e.message });
