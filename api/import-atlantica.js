@@ -78,7 +78,7 @@ function cleanCategory(value = '') {
   return category;
 }
 
-function extractCategory(html) {
+function extractCategory(html, ldCategory = '') {
   // 1) A fonte mais confiável: link da própria categoria.
   const categoryLink =
     first(/(?:categoria|category)[^<]{0,300}<a[^>]+href=["'][^"']*\/produtos\/(?:categoria|departamento)[^"']*["'][^>]*>([\s\S]*?)<\/a>/i, html) ||
@@ -88,16 +88,15 @@ function extractCategory(html) {
   if (fromLink) return fromLink;
 
   // 2) JSON-LD, quando a loja informar a categoria corretamente.
-  const ldCategory = cleanCategory(arguments[1] || '');
-  if (ldCategory) return ldCategory;
+  const categoryFromLd = cleanCategory(ldCategory);
+  if (categoryFromLd) return categoryFromLd;
 
   // 3) Texto "Categoria:" somente quando o trecho seguinte for claramente curto.
-  const labeled = first(/Categoria\s*:\\s*(?:<[^>]*>\\s*)?([^<\\n]{1,80})/i, html);
+  const labeled = first(/Categoria\s*:\s*(?:<[^>]*>\s*)?([^<\n]{1,80})/i, html);
   return cleanCategory(labeled);
 }
 
 function isLikelyProductImage(value = '') {
-(value = '') {
   const s = String(value).toLowerCase();
   if (!s) return false;
   if (/(logo|logotipo|favicon|icon|header|footer|menu|banner|sprite|placeholder)/i.test(s)) return false;
