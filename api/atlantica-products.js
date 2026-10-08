@@ -25,7 +25,7 @@ function sentence(value){const s=String(value??'').trim().toLowerCase();return s
 
 export default async function handler(req, res) {
   try {
-    if (req.method === 'GET') return res.status(200).json(await db('?select=*&order=nome.asc'));
+    if (req.method === 'GET') return res.status(200).json(await db('?select=*&categoria=not.eq.' + encodeURIComponent('__LOJA_CONFIG__') + '&order=nome.asc'));
     if (!autorizado(req)) return res.status(401).json({ erro: 'Senha incorreta' });
 
     if (req.method === 'POST') {
@@ -34,6 +34,7 @@ export default async function handler(req, res) {
         categoria: upper(body.categoria).slice(0,100), descricao: sentence(body.descricao).slice(0,5000),
         imagem: String(body.imagem || '').trim().slice(0,2000), preco: numberPrice(body.preco), atualizado_em: new Date().toISOString() };
       if (!row.source_url || !row.nome) return res.status(400).json({ erro: 'source_url e nome são obrigatórios' });
+      if (row.categoria === '__LOJA_CONFIG__') return res.status(400).json({ erro: 'Categoria reservada.' });
       const rows = await db('?on_conflict=source_url', { method: 'POST', body: JSON.stringify(row) });
       return res.status(200).json(rows?.[0] || row);
     }
@@ -46,6 +47,7 @@ export default async function handler(req, res) {
         descricao: sentence(body.descricao).slice(0,5000), imagem: String(body.imagem || '').trim().slice(0,2000),
         preco: numberPrice(body.preco), atualizado_em: new Date().toISOString() };
       if (!row.nome) return res.status(400).json({ erro: 'nome é obrigatório' });
+      if (row.categoria === '__LOJA_CONFIG__') return res.status(400).json({ erro: 'Categoria reservada.' });
       const rows = await db('?id=eq.' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(row) });
       if (!rows?.length) return res.status(404).json({ erro: 'Produto não encontrado' });
       return res.status(200).json(rows[0]);
@@ -53,8 +55,8 @@ export default async function handler(req, res) {
 
     if (req.method === 'DELETE') {
       const id = String(req.query.id || '');
-      if (id) { await db('?id=eq.' + encodeURIComponent(id), { method: 'DELETE' }); return res.status(200).json({ ok:true, excluidos:1 }); }
-      await db('?source_url=not.is.null', { method:'DELETE' });
+      if (id) { await db('?id=eq.' + encodeURIComponent(id) + '&categoria=not.eq.' + encodeURIComponent('__LOJA_CONFIG__'), { method: 'DELETE' }); return res.status(200).json({ ok:true, excluidos:1 }); }
+      await db('?categoria=not.eq.' + encodeURIComponent('__LOJA_CONFIG__'), { method:'DELETE' });
       return res.status(200).json({ ok:true, todos:true });
     }
     return res.status(405).end();
