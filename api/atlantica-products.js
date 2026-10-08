@@ -26,7 +26,7 @@ async function db(path = '', options = {}) {
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
-      if (!autorizado(req)) return res.status(401).json({ erro: 'Senha incorreta' });
+      // O catálogo público precisa conseguir ler os produtos sem senha.
       const rows = await db('?select=*&order=nome.asc');
       return res.status(200).json(rows);
     }
