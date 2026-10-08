@@ -25,7 +25,7 @@ function sentence(value){const s=String(value??'').trim().toLowerCase();return s
 
 export default async function handler(req, res) {
   try {
-    if (req.method === 'GET') { if (String(req.query.admin || '') === '1' && !autorizado(req)) return res.status(401).json({ erro: 'Senha incorreta' }); return res.status(200).json(await db('?select=*&categoria=not.eq.' + encodeURIComponent('__LOJA_CONFIG__') + '&order=nome.asc')); }
+    if (req.method === 'GET') return res.status(200).json(await db('?select=*&categoria=not.eq.' + encodeURIComponent('__LOJA_CONFIG__') + '&order=nome.asc'));
     if (!autorizado(req)) return res.status(401).json({ erro: 'Senha incorreta' });
 
     if (req.method === 'POST') {
