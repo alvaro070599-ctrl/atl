@@ -43,10 +43,12 @@ export default async function handler(req, res) {
       const id = String(req.query.id || '');
       if (!id) return res.status(400).json({ erro: 'id obrigatório' });
       const body = req.body || {};
-      const row = { nome: upper(body.nome).slice(0,160), categoria: upper(body.categoria).slice(0,100),
-        descricao: sentence(body.descricao).slice(0,5000), imagem: String(body.imagem || '').trim().slice(0,2000),
-        preco: numberPrice(body.preco), atualizado_em: new Date().toISOString() };
-      if (!row.nome) return res.status(400).json({ erro: 'nome é obrigatório' });
+      const row = { atualizado_em: new Date().toISOString() };
+      if (Object.prototype.hasOwnProperty.call(body, 'nome')) row.nome = upper(body.nome).slice(0,160);
+      if (Object.prototype.hasOwnProperty.call(body, 'categoria')) row.categoria = upper(body.categoria).slice(0,100);
+      if (Object.prototype.hasOwnProperty.call(body, 'descricao')) row.descricao = sentence(body.descricao).slice(0,5000);
+      if (Object.prototype.hasOwnProperty.call(body, 'imagem')) row.imagem = String(body.imagem || '').trim().slice(0,2000);
+      if (Object.prototype.hasOwnProperty.call(body, 'preco')) row.preco = numberPrice(body.preco);
       if (row.categoria === '__LOJA_CONFIG__') return res.status(400).json({ erro: 'Categoria reservada.' });
       const rows = await db('?id=eq.' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(row) });
       if (!rows?.length) return res.status(404).json({ erro: 'Produto não encontrado' });
