@@ -3,9 +3,9 @@ const autorizado = (req) =>
   req.headers['x-admin-password'] === process.env.ATLANTICA_ADMIN_PASSWORD;
 
 async function db(path = '', options = {}) {
-  const base = process.env.ATLANTICA_DB_URL;
-  const key = process.env.ATLANTICA_DB_SERVICE_KEY;
-  if (!base || !key) throw new Error('Configure ATLANTICA_DB_URL e ATLANTICA_DB_SERVICE_KEY');
+  const base = process.env.ATLANTICA_DB_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.ATLANTICA_DB_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) throw new Error('Configure a URL e a chave do Supabase');
 
   const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/atlantica_products' + path, {
     ...options,
@@ -26,6 +26,7 @@ async function db(path = '', options = {}) {
 export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
+      if (!autorizado(req)) return res.status(401).json({ erro: 'Senha incorreta' });
       const rows = await db('?select=*&order=nome.asc');
       return res.status(200).json(rows);
     }
