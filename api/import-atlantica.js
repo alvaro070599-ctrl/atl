@@ -78,7 +78,9 @@ function cleanProductName(value = '') {
 
 function numberFrom(value) {
   if (value == null || value === '') return null;
-  const s = String(value).trim().replace(/R\\$\\s?/i, '').replace(/\\./g, '').replace(',', '.');
+  let s = String(value).trim().replace(/R\\$\\s?/i, '').replace(/\\s/g, '');
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\\./g, '').replace(',', '.');
+  else if (s.includes(',')) s = s.replace(',', '.');
   const n = Number(s);
   return Number.isFinite(n) ? Number(n.toFixed(2)) : null;
 }
