@@ -138,7 +138,7 @@ async function upsert(row) {
   const key = process.env.ATLANTICA_DB_SERVICE_KEY;
   if (!base || !key) throw new Error('Configure ATLANTICA_DB_URL e ATLANTICA_DB_SERVICE_KEY');
 
-  const r = await fetch(base.replace(/\\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
+  const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
     method: 'POST',
     headers: {
       apikey: key,
