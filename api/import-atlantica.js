@@ -22,14 +22,58 @@ function stripHtml(s = '') {
   return clean(decode(String(s).replace(/<[^>]+>/g, ' ')));
 }
 
+function isProductUrl(u) {
+  try {
+    const path = new URL(u).pathname.replace(/\\/+$/, '');
+    if (!/^\/produtos\//i.test(path)) return false;
+
+    // These are navigation/category/search pages, not individual products.
+    const blocked = [
+      /^\/produtos\/$/i,
+      /^\/produtos\/buscar(?:\/|$)/i,
+      /^\/produtos\/categoria(?:\/|$)/i,
+      /^\/produtos\/departamento(?:\/|$)/i,
+      /^\/produtos\/produto(?:\/|$)/i,
+    ];
+    if (blocked.some((re) => re.test(path))) return false;
+
+    // Individual product pages are /produtos/slug or /produtos/marca/slug.
+    return /^\/produtos\/[^/?#]+(?:\/[^/?#]+)?$/i.test(path);
+  } catch {
+    return false;
+  }
+}
+
 function links(html, base) {
   const out = [], re = /href=["']([^"']+)["']/gi;
   let m;
   while ((m = re.exec(html))) {
     const u = abs(decode(m[1]), base);
-    if (u && /\/produtos\//i.test(new URL(u).pathname)) out.push(u.split('#')[0]);
+    if (u && isProductUrl(u)) out.push(u.split('#')[0]);
   }
   return [...new Set(out)];
+}
+
+function cleanCategory(value = '') {
+  const category = stripHtml(value)
+    .replace(/^categoria\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Reject leaked IDs/SKUs or markup-like garbage.
+  if (!category || category.length > 80) return '';
+  if (/^[A-Z0-9#*._:/-]{2,}(?:\s+[A-Z0-9#*._:/-]{1,})?$/i.test(category) &&
+      /\d/.test(category) &&
+      !/[A-Za-zÀ-ÿ]{3,}\s+[A-Za-zÀ-ÿ]{3,}/.test(category)) return '';
+
+  return category;
+}
+
+function isLikelyProductImage(value = '') {
+  const s = String(value).toLowerCase();
+  if (!s) return false;
+  if (/(logo|logotipo|favicon|icon|header|footer|menu|banner|sprite|placeholder)/i.test(s)) return false;
+  return true;
 }
 
 function first(re, html) {
@@ -95,15 +139,20 @@ function parseProduct(html, url) {
     first(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i, html)
   );
 
-  const categoria =
-    stripHtml(ld.category || '') ||
+  const categoria = cleanCategory(
+    ld.category ||
     first(/Categoria\s*:\s*<[^>]*>\s*([^<]+)/i, html) ||
-    first(/Categoria\s*:\s*([^<\n]+)/i, html);
+    first(/Categoria\s*:\s*([^<\n]+)/i, html)
+  );
 
-  const imagem =
-    (Array.isArray(ld.image) ? ld.image[0] : ld.image) ||
-    first(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i, html) ||
-    first(/<img[^>]+src=["']([^"']+)["'][^>]*>/i, html);
+  const imageCandidates = [
+    Array.isArray(ld.image) ? ld.image[0] : ld.image,
+    first(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i, html),
+    first(/<img[^>]+(?:class|id)=["'][^"']*product[^"']*["'][^>]+src=["']([^"']+)["']/i, html),
+    first(/<img[^>]+src=["']([^"']+product_img[^"']*)["'][^>]*>/i, html),
+  ].filter(isLikelyProductImage);
+
+  const imagem = imageCandidates[0] || '';
 
   const descricao =
     ld.description ||
@@ -122,7 +171,7 @@ function parseProduct(html, url) {
     nome,
     categoria: clean(categoria),
     descricao: stripHtml(descricao),
-    imagem: abs(imagem, url),
+    imagem: imagem ? abs(imagem, url) : '',
     preco,
   };
 }
