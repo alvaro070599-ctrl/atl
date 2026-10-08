@@ -16,7 +16,9 @@ const decode = (s = '') => String(s)
   .replace(/&#39;/gi, "'")
   .replace(/&#x27;/gi, "'")
   .replace(/&lt;/gi, '<')
-  .replace(/&gt;/gi, '>');
+  .replace(/&gt;/gi, '>')
+  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+  .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
 
 function stripHtml(s = '') {
   return clean(decode(String(s).replace(/<[^>]+>/g, ' ')));
@@ -55,21 +57,47 @@ function links(html, base) {
 }
 
 function cleanCategory(value = '') {
-  const category = stripHtml(value)
+  let category = stripHtml(value)
     .replace(/^categoria\s*:\s*/i, '')
+    .replace(/^categoria\s*[-–—:]?\s*/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 
-  // Reject leaked IDs/SKUs or markup-like garbage.
   if (!category || category.length > 80) return '';
-  if (/^[A-Z0-9#*._:/-]{2,}(?:\s+[A-Z0-9#*._:/-]{1,})?$/i.test(category) &&
-      /\d/.test(category) &&
-      !/[A-Za-zÀ-ÿ]{3,}\s+[A-Za-zÀ-ÿ]{3,}/.test(category)) return '';
+
+  // Nunca aceite texto que pareça código, SKU ou texto técnico vazado.
+  if (/[#;:{}\[\]<>]/.test(category)) return '';
+  if (/\b(jogo da velha|ponto e vírgula|determina|undefined|null|object object)\b/i.test(category)) return '';
+  if (/\d{2,}/.test(category)) return '';
+  if (/^[A-Z0-9._:/-]+(?:\s+[A-Z0-9._:/-]+)*$/i.test(category)) return '';
+
+  // Categoria real é curta e textual; evita frases inteiras de navegação.
+  const words = category.split(/\s+/).filter(Boolean);
+  if (words.length > 5) return '';
 
   return category;
 }
 
+function extractCategory(html) {
+  // 1) A fonte mais confiável: link da própria categoria.
+  const categoryLink =
+    first(/(?:categoria|category)[^<]{0,300}<a[^>]+href=["'][^"']*\/produtos\/(?:categoria|departamento)[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>/i, html) ||
+    first(/<a[^>]+href=["'][^"']*\/produtos\/(?:categoria|departamento)[^"']*["'][^>]*>([\\s\\S]*?)<\\/a>/i, html);
+
+  const fromLink = cleanCategory(categoryLink);
+  if (fromLink) return fromLink;
+
+  // 2) JSON-LD, quando a loja informar a categoria corretamente.
+  const ldCategory = cleanCategory(arguments[1] || '');
+  if (ldCategory) return ldCategory;
+
+  // 3) Texto "Categoria:" somente quando o trecho seguinte for claramente curto.
+  const labeled = first(/Categoria\\s*:\\s*(?:<[^>]*>\\s*)?([^<\\n]{1,80})/i, html);
+  return cleanCategory(labeled);
+}
+
 function isLikelyProductImage(value = '') {
+(value = '') {
   const s = String(value).toLowerCase();
   if (!s) return false;
   if (/(logo|logotipo|favicon|icon|header|footer|menu|banner|sprite|placeholder)/i.test(s)) return false;
@@ -106,18 +134,51 @@ function jsonLdProducts(html) {
 }
 
 function cleanProductName(value = '') {
-  let name = stripHtml(value);
-
-  // Remove common internal SKU/code blocks when they leak into the title.
-  name = name
-    .replace(/^(?:[A-Z]{1,4}[-_ ]?\d{2,}[A-Z0-9#*_-]*[\s:.-]*)+/i, '')
-    .replace(/(?:^|\s)[A-Z]{1,4}[-_ ]?\d{2,}[A-Z0-9#*_-]*(?=\s|$)/gi, ' ')
-    .replace(/(?:^|\s)[A-Z0-9]{1,5}#[A-Z0-9_-]{2,}(?=\s|$)/gi, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/^[|•·:;,_-]+|[|•·:;,_-]+$/g, '')
+  let name = stripHtml(value)
+    .replace(/\s+/g, ' ')
     .trim();
 
+  // Remove prefixos que claramente são códigos/SKUs.
+  name = name
+    .replace(/^(?:[A-Z]{1,6}[-_ ]?\d{2,}[A-Z0-9#*_.;:/-]*[\s:.;,-]*)+/i, '')
+    .replace(/^(?:\d{2,}[A-Z0-9#*_.;:/-]*[\s:.;,-]*)+/i, '')
+    .replace(/^(?:SKU|COD(?:IGO)?|REF(?:ERENCIA)?)\s*[:#-]?\s*[A-Z0-9._#*;-]+\s*/i, '')
+    .replace(/^(?:categoria)\s*[:#-]\s*/i, '');
+
+  // Remove códigos que ficaram no meio/final do nome.
+  name = name
+    .replace(/(?:^|\s)[A-Z]{1,6}[-_ ]?\d{2,}[A-Z0-9#*_.;:/-]*(?=\s|$)/gi, ' ')
+    .replace(/(?:^|\s)[A-Z0-9]{1,6}#[A-Z0-9._;-]{2,}(?=\s|$)/gi, ' ')
+    .replace(/(?:^|\s)\d{2,}[#;][A-Z0-9._-]*(?=\s|$)/gi, ' ');
+
+  name = name
+    .replace(/^[|•·:;,_-]+|[|•·:;,_-]+$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // Evita gravar texto que claramente não é nome de produto.
+  if (!name || name.length > 180) return '';
+  if (/^(categoria|produto|descrição|description)\s*[:#-]/i.test(name)) return '';
+
   return name;
+}
+
+function betterName(h1, ldName, ogTitle, url) {
+  const candidates = [h1, ldName, ogTitle]
+    .map(cleanProductName)
+    .filter(Boolean);
+
+  // H1 é o título visual da página e, nesta loja, é a fonte preferida.
+  if (candidates[0]) return candidates[0];
+  if (candidates[1]) return candidates[1];
+  if (candidates[2]) return candidates[2];
+
+  try {
+    const slug = new URL(url).pathname.split('/').filter(Boolean).pop() || '';
+    return cleanProductName(slug.replace(/[-_]+/g, ' '));
+  } catch {
+    return '';
+  }
 }
 
 function numberFrom(value) {
@@ -133,17 +194,12 @@ function parseProduct(html, url) {
   const ld = jsonLdProducts(html)[0] || {};
   const offers = Array.isArray(ld.offers) ? ld.offers[0] : (ld.offers || {});
 
-  const nome = cleanProductName(
-    ld.name ||
-    first(/<h1[^>]*>([\s\S]*?)<\/h1>/i, html) ||
-    first(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i, html)
-  );
+  const h1 = first(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i, html);
+  const ogTitle = first(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i, html);
+  const nome = betterName(h1, ld.name, ogTitle, url);
 
-  const categoria = cleanCategory(
-    ld.category ||
-    first(/Categoria\s*:\s*<[^>]*>\s*([^<]+)/i, html) ||
-    first(/Categoria\s*:\s*([^<\n]+)/i, html)
-  );
+  const ldCategory = typeof ld.category === 'string' ? ld.category : '';
+  const categoria = extractCategory(html, ldCategory);
 
   const imageCandidates = [
     Array.isArray(ld.image) ? ld.image[0] : ld.image,
@@ -155,9 +211,9 @@ function parseProduct(html, url) {
   const imagem = imageCandidates[0] || '';
 
   const descricao =
-    ld.description ||
+    typeof ld.description === 'string' ? ld.description :
     first(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i, html) ||
-    first(/<div[^>]+class=["'][^"']*(?:descricao|description)[^"']*["'][^>]*>([\s\S]*?)<\/div>/i, html);
+    first(/<div[^>]+class=["'][^"']*(?:descricao|description)[^"']*["'][^>]*>([\\s\\S]*?)<\\/div>/i, html);
 
   const preco =
     numberFrom(offers.price) ??
@@ -169,7 +225,7 @@ function parseProduct(html, url) {
   return {
     source_url: url,
     nome,
-    categoria: clean(categoria),
+    categoria: categoria || '',
     descricao: stripHtml(descricao),
     imagem: imagem ? abs(imagem, url) : '',
     preco,
