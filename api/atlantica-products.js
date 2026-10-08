@@ -13,7 +13,6 @@ async function db(path = '', options = {}) {
   if (!r.ok) throw new Error(await r.text());
   return r.status === 204 ? null : r.json();
 }
-
 function numberPrice(value) {
   if (value === '' || value == null) return null;
   const normalized = String(value).trim().replace(/R\$\s?/gi, '').replace(/\./g, '').replace(',', '.');
@@ -21,6 +20,8 @@ function numberPrice(value) {
   if (!Number.isFinite(n) || n < 0) throw new Error('Preço inválido');
   return Number(n.toFixed(2));
 }
+function upper(value){return String(value??'').trim().toUpperCase();}
+function sentence(value){const s=String(value??'').trim().toLowerCase();return s?s.charAt(0).toUpperCase()+s.slice(1):'';}
 
 export default async function handler(req, res) {
   try {
@@ -29,8 +30,8 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = req.body || {};
-      const row = { source_url: String(body.source_url || ''), nome: String(body.nome || '').trim().slice(0,160),
-        categoria: String(body.categoria || '').trim().slice(0,100), descricao: String(body.descricao || '').slice(0,5000),
+      const row = { source_url: String(body.source_url || ''), nome: upper(body.nome).slice(0,160),
+        categoria: upper(body.categoria).slice(0,100), descricao: sentence(body.descricao).slice(0,5000),
         imagem: String(body.imagem || '').trim().slice(0,2000), preco: numberPrice(body.preco), atualizado_em: new Date().toISOString() };
       if (!row.source_url || !row.nome) return res.status(400).json({ erro: 'source_url e nome são obrigatórios' });
       const rows = await db('?on_conflict=source_url', { method: 'POST', body: JSON.stringify(row) });
@@ -41,8 +42,8 @@ export default async function handler(req, res) {
       const id = String(req.query.id || '');
       if (!id) return res.status(400).json({ erro: 'id obrigatório' });
       const body = req.body || {};
-      const row = { nome: String(body.nome || '').trim().slice(0,160), categoria: String(body.categoria || '').trim().slice(0,100),
-        descricao: String(body.descricao || '').slice(0,5000), imagem: String(body.imagem || '').trim().slice(0,2000),
+      const row = { nome: upper(body.nome).slice(0,160), categoria: upper(body.categoria).slice(0,100),
+        descricao: sentence(body.descricao).slice(0,5000), imagem: String(body.imagem || '').trim().slice(0,2000),
         preco: numberPrice(body.preco), atualizado_em: new Date().toISOString() };
       if (!row.nome) return res.status(400).json({ erro: 'nome é obrigatório' });
       const rows = await db('?id=eq.' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(row) });
