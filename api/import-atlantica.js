@@ -127,41 +127,28 @@ function parseProduct(html, url) {
   };
 }
 
-async function get(url, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 CatalogImporter/1.0' }, signal: controller.signal });
-    if (!r.ok) throw new Error(`${r.status} em ${url}`);
-    return r.text();
-  } finally {
-    clearTimeout(timer);
-  }
+async function get(url) {
+  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 CatalogImporter/1.0' } });
+  if (!r.ok) throw new Error(`${r.status} em ${url}`);
+  return r.text();
 }
 
-async function upsert(row, timeoutMs = 10000) {
+async function upsert(row) {
   const base = process.env.ATLANTICA_DB_URL;
   const key = process.env.ATLANTICA_DB_SERVICE_KEY;
   if (!base || !key) throw new Error('Configure ATLANTICA_DB_URL e ATLANTICA_DB_SERVICE_KEY');
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
-      method: 'POST',
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      },
-      body: JSON.stringify({ ...row, atualizado_em: new Date().toISOString() }),
-      signal: controller.signal,
-    });
-    if (!r.ok) throw new Error(await r.text());
-  } finally {
-    clearTimeout(timer);
-  }
+  const r = await fetch(base.replace(/\\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
+    method: 'POST',
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify({ ...row, atualizado_em: new Date().toISOString() }),
+  });
+  if (!r.ok) throw new Error(await r.text());
 }
 
 export default async function handler(req, res) {
