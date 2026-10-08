@@ -182,20 +182,22 @@ async function get(url) {
   return r.text();
 }
 
-async function upsert(row) {
+async function upsertMany(rows) {
   const base = process.env.ATLANTICA_DB_URL;
   const key = process.env.ATLANTICA_DB_SERVICE_KEY;
   if (!base || !key) throw new Error('Configure ATLANTICA_DB_URL e ATLANTICA_DB_SERVICE_KEY');
+  if (!rows.length) return;
 
+  const payload = rows.map((row) => ({ ...row, atualizado_em: new Date().toISOString() }));
   const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
     method: 'POST',
     headers: {
       apikey: key,
-      Authorization: `Bearer ${key}`,
+      Authorization: 'Bearer ' + key,
       'Content-Type': 'application/json',
       Prefer: 'resolution=merge-duplicates,return=minimal',
     },
-    body: JSON.stringify({ ...row, atualizado_em: new Date().toISOString() }),
+    body: JSON.stringify(payload),
   });
   if (!r.ok) throw new Error(await r.text());
 }
@@ -222,7 +224,7 @@ export default async function handler(req, res) {
   try {
     // A função trabalha em pequenos lotes. Cada chamada importa no máximo 20
     // produtos novos e deixa os próximos para a próxima chamada.
-    const pages = Math.min(10, Math.max(1, Number(req.body?.paginas || 3)));
+    const pages = 1;
     const lote = Math.min(20, Math.max(1, Number(req.body?.lote || 20)));
 
     const found = new Set();
@@ -246,17 +248,25 @@ export default async function handler(req, res) {
     let importados = 0;
     let falhas = 0;
 
-    // Sequencial de propósito: evita sobrecarregar a Atlântica, o Supabase
-    // e a própria Function da Vercel.
-    for (const url of urls) {
+    // Busca os produtos em paralelo e grava tudo em uma única chamada ao Supabase.
+    const results = await Promise.all(urls.map(async (url) => {
       try {
         const product = parseProduct(await get(url), url);
-        if (product) {
-          await upsert(product);
-          importados++;
-        }
+        return product ? { product, ok: true } : { product: null, ok: true };
       } catch {
-        falhas++;
+        return { product: null, ok: false };
+      }
+    }));
+
+    const products = results.filter((x) => x.product).map((x) => x.product);
+    falhas = results.filter((x) => !x.ok).length;
+
+    if (products.length) {
+      try {
+        await upsertMany(products);
+        importados = products.length;
+      } catch {
+        falhas += products.length;
       }
     }
 
