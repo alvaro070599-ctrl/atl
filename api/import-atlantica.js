@@ -207,7 +207,7 @@ export default async function handler(req, res) {
 
   try {
     const found = new Set();
-    const pages = Math.min(100, Math.max(1, Number(req.body?.paginas || 30)));
+    const pages = Math.min(10, Math.max(1, Number(req.body?.paginas || 3)));
 
     const home = await get(START);
     for (const u of links(home, START)) found.add(u);
@@ -223,7 +223,7 @@ export default async function handler(req, res) {
 
     let importados = 0, falhas = 0;
     const urls = [...found];
-    const concurrency = 8;
+    const concurrency = 3;
     for (let i = 0; i < urls.length; i += concurrency) {
       const lote = urls.slice(i, i + concurrency);
       const resultados = await Promise.all(lote.map(async (url) => {
