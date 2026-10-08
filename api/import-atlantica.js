@@ -200,14 +200,32 @@ async function upsert(row) {
   if (!r.ok) throw new Error(await r.text());
 }
 
+async function existingUrls() {
+  const base = process.env.ATLANTICA_DB_URL;
+  const key = process.env.ATLANTICA_DB_SERVICE_KEY;
+  if (!base || !key) throw new Error('Configure ATLANTICA_DB_URL e ATLANTICA_DB_SERVICE_KEY');
+
+  const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/atlantica_products?select=source_url&source_url=not.is.null', {
+    headers: { apikey: key, Authorization: `Bearer ${key}` },
+  });
+  if (!r.ok) throw new Error(await r.text());
+
+  const rows = await r.json();
+  return new Set(rows.map((x) => x.source_url).filter(Boolean));
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
   if (!process.env.ATLANTICA_ADMIN_PASSWORD || req.headers['x-admin-password'] !== process.env.ATLANTICA_ADMIN_PASSWORD)
     return res.status(401).json({ erro: 'Senha incorreta' });
 
   try {
-    const found = new Set();
+    // A função trabalha em pequenos lotes. Cada chamada importa no máximo 20
+    // produtos novos e deixa os próximos para a próxima chamada.
     const pages = Math.min(10, Math.max(1, Number(req.body?.paginas || 3)));
+    const lote = Math.min(20, Math.max(1, Number(req.body?.lote || 20)));
+
+    const found = new Set();
 
     const home = await get(START);
     for (const u of links(home, START)) found.add(u);
@@ -221,37 +239,41 @@ export default async function handler(req, res) {
       if (!pageLinks.length || found.size === before) break;
     }
 
-    let importados = 0, falhas = 0;
-    const urls = [...found];
-    const concurrency = 3;
-    for (let i = 0; i < urls.length; i += concurrency) {
-      const lote = urls.slice(i, i + concurrency);
-      const resultados = await Promise.all(lote.map(async (url) => {
-        try {
-          const product = parseProduct(await get(url), url);
-          if (product) {
-            await upsert(product);
-            return { ok: true, imported: true };
-          }
-          return { ok: true, imported: false };
-        } catch {
-          return { ok: false, imported: false };
+    const already = await existingUrls();
+    const pending = [...found].filter((url) => !already.has(url));
+    const urls = pending.slice(0, lote);
+
+    let importados = 0;
+    let falhas = 0;
+
+    // Sequencial de propósito: evita sobrecarregar a Atlântica, o Supabase
+    // e a própria Function da Vercel.
+    for (const url of urls) {
+      try {
+        const product = parseProduct(await get(url), url);
+        if (product) {
+          await upsert(product);
+          importados++;
         }
-      }));
-      for (const r of resultados) {
-        if (r.imported) importados++;
-        if (!r.ok) falhas++;
+      } catch {
+        falhas++;
       }
     }
 
     return res.status(200).json({
       ok: true,
       encontrados: found.size,
+      ja_existiam: found.size - pending.length,
+      processados: urls.length,
       importados,
       falhas,
+      restantes: Math.max(0, pending.length - urls.length),
+      mensagem: pending.length > urls.length
+        ? 'Lote concluído. Execute a importação novamente para continuar.'
+        : 'Importação concluída.',
       preco: 'importado quando disponível no catálogo',
     });
   } catch (e) {
-    return res.status(500).json({ erro: e.message });
+    return res.status(500).json({ erro: 'Erro no importador: ' + e.message });
   }
 }
