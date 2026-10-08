@@ -139,24 +139,29 @@ async function get(url, timeoutMs = 15000) {
   }
 }
 
-async function upsert(row) {
+async function upsert(row, timeoutMs = 10000) {
   const base = process.env.ATLANTICA_DB_URL;
   const key = process.env.ATLANTICA_DB_SERVICE_KEY;
   if (!base || !key) throw new Error('Configure ATLANTICA_DB_URL e ATLANTICA_DB_SERVICE_KEY');
 
-  const r = await fetch(base.replace(/\\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
-    method: 'POST',
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify({ ...row, atualizado_em: new Date().toISOString() }),
-    signal: controller.signal,
-  });
-  clearTimeout(timer);
-  if (!r.ok) throw new Error(await r.text());
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/rest/v1/atlantica_products?on_conflict=source_url', {
+      method: 'POST',
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({ ...row, atualizado_em: new Date().toISOString() }),
+      signal: controller.signal,
+    });
+    if (!r.ok) throw new Error(await r.text());
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export default async function handler(req, res) {
