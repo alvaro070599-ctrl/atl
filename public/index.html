@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlântica Natural</title>
+<meta name="description" content="Catálogo de produtos Atlântica Natural">
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#fafafa;color:#172018}
+header{background:#fff;border-bottom:1px solid #ddd;position:sticky;top:0;z-index:5}.wrap{max-width:1180px;margin:auto;padding:18px}
+nav{display:flex;justify-content:space-between;align-items:center;gap:20px}.logo{font-size:1.5rem;font-weight:800}
+.hero{background:#edf5ed;padding:55px 18px}.hero h1{font-size:clamp(2rem,5vw,4rem);margin:0 0 12px}.hero p{max-width:650px;font-size:1.1rem}
+.filtros{display:flex;gap:8px;flex-wrap:wrap;margin:25px 0}.filtros button{border:1px solid #aaa;background:#fff;border-radius:999px;padding:9px 15px;cursor:pointer}.filtros button.ativo{background:#172018;color:#fff}
+.grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px}.card{background:#fff;border:1px solid #e4e4e4;border-radius:14px;overflow:hidden}.foto{aspect-ratio:1/1;background:#f3f3f3}.foto img{width:100%;height:100%;object-fit:cover}.info{padding:15px}.info h2{font-size:1.1rem;margin:0 0 8px}.cat{font-size:.85rem;color:#637063}.desc{color:#555;min-height:50px}.preco{font-weight:800;margin-top:12px}.sem-preco{color:#777;font-weight:600}
+@media(max-width:600px){.wrap{padding:14px}.grade{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.info{padding:11px}.desc{font-size:.9rem}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><nav><div class="logo">Atlântica Natural</div><a href="/admin.html">Admin</a></nav></div></header>
+<section class="hero"><div class="wrap"><h1>Catálogo Atlântica Natural</h1><p>Produtos, categorias e informações atualizadas. Os preços ficam para você cadastrar depois.</p></div></section>
+<main class="wrap"><div class="filtros" id="filtros"></div><div class="grade" id="grade"><p>Carregando produtos...</p></div></main>
+<script>
+let produtos=[],filtro='Todos';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function cats(){return ['Todos',...new Set(produtos.map(p=>p.categoria).filter(Boolean))].sort((a,b)=>a==='Todos'?-1:b==='Todos'?1:a.localeCompare(b,'pt-BR'))}
+function render(){
+ document.querySelector('#filtros').innerHTML=cats().map(c=>'<button class="'+(c===filtro?'ativo':'')+'" data-cat="'+esc(c)+'">'+esc(c)+'</button>').join('');
+ const list=produtos.filter(p=>filtro==='Todos'||p.categoria===filtro);
+ document.querySelector('#grade').innerHTML=list.length?list.map(p=>'<article class="card"><div class="foto">'+(p.imagem?'<img loading="lazy" src="'+esc(p.imagem)+'" alt="'+esc(p.nome)+'">':'')+'</div><div class="info"><h2>'+esc(p.nome)+'</h2><div class="cat">'+esc(p.categoria||'Sem categoria')+'</div><p class="desc">'+esc(p.descricao||'')+'</p><div class="'+(p.preco==null?'sem-preco':'preco')+'">'+(p.preco==null?'Preço a definir':Number(p.preco).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}))+'</div></div></article>').join(''):'<p>Nenhum produto encontrado.</p>';
+}
+document.querySelector('#filtros').addEventListener('click',e=>{if(e.target.dataset.cat){filtro=e.target.dataset.cat;render()}});
+fetch('/api/atlantica-products').then(r=>r.json()).then(x=>{produtos=Array.isArray(x)?x:[];render()}).catch(()=>{document.querySelector('#grade').innerHTML='<p>Não foi possível carregar o catálogo.</p>'});
+</script>
+</body>
+</html>
