@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       if (Object.prototype.hasOwnProperty.call(body, 'nome')) row.nome = upper(body.nome).slice(0,160);
       if (Object.prototype.hasOwnProperty.call(body, 'categoria')) row.categoria = upper(body.categoria).slice(0,100);
       if (Object.prototype.hasOwnProperty.call(body, 'descricao')) row.descricao = sentence(body.descricao).slice(0,5000);
-      if (Object.prototype.hasOwnProperty.call(body, 'imagem')) row.imagem = String(body.imagem || '').trim().slice(0,2000);
+      if (Object.prototype.hasOwnProperty.call(body, 'imagem')) row.imagem = String(body.imagem || '').trim().slice(0,100000);
       if (Object.prototype.hasOwnProperty.call(body, 'preco')) row.preco = numberPrice(body.preco);
       if (row.categoria === '__LOJA_CONFIG__') return res.status(400).json({ erro: 'Categoria reservada.' });
       const rows = await db('?id=eq.' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(row) });
