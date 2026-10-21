@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       const body = req.body || {};
       const row = { source_url: String(body.source_url || ''), nome: upper(body.nome).slice(0,160),
         categoria: upper(body.categoria).slice(0,100), descricao: sentence(body.descricao).slice(0,5000),
-        imagem: String(body.imagem || '').trim().slice(0,2000), preco: numberPrice(body.preco), atualizado_em: new Date().toISOString() };
+        imagem: String(body.imagem || '').trim().slice(0,100000), preco: numberPrice(body.preco), atualizado_em: new Date().toISOString() };
       if (!row.source_url || !row.nome) return res.status(400).json({ erro: 'source_url e nome são obrigatórios' });
       if (row.categoria === '__LOJA_CONFIG__') return res.status(400).json({ erro: 'Categoria reservada.' });
       const rows = await db('?on_conflict=source_url', { method: 'POST', body: JSON.stringify(row) });
